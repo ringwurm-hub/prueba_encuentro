@@ -1,16 +1,14 @@
 console.log("🚀 SERVER STARTING")
-console.log("SUPABASE_URL:", process.env.SUPABASE_URL)
-console.log("SUPABASE_KEY:", process.env.SUPABASE_SERVICE_KEY)
-require('dotenv').config();
-const express = require('express');
-const cors    = require('cors');
-const { createClient } = require('@supabase/supabase-js');
 
-const app = express();
-import cors from 'cors'
-app.use(cors({ origin: '*' }))
-app.use(express.json());
-app.use(cors());
+import express from "express"
+import cors from "cors"
+import { createClient } from "@supabase/supabase-js"
+
+const app = express()
+
+app.use(cors({ origin: "*" }))
+app.use(express.json())
+
 
 // ─── Supabase (service role — puede saltarse RLS para escritura) ───
 const supabase = createClient(
