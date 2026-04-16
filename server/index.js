@@ -7,6 +7,8 @@ const cors    = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
+import cors from 'cors'
+app.use(cors({ origin: '*' }))
 app.use(express.json());
 app.use(cors());
 
