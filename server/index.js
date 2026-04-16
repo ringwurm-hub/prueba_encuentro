@@ -1,3 +1,6 @@
+console.log("🚀 SERVER STARTING")
+console.log("SUPABASE_URL:", process.env.SUPABASE_URL)
+console.log("SUPABASE_KEY:", process.env.SUPABASE_SERVICE_KEY)
 require('dotenv').config();
 const express = require('express');
 const cors    = require('cors');
