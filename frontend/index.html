@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VIDEOARTE NET</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --surface2: #1a1a1a;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.14);
+    --text: #e8e8e2;
+    --muted: #666660;
+    --accent: #c8f060;
+    --mono: 'Space Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  /* ── HEADER ── */
+  #header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: 52px;
+    display: flex; align-items: center; gap: 16px;
+    padding: 0 20px;
+    background: rgba(10,10,10,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 0.5px solid var(--border);
+  }
+  #logo {
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.2em; color: var(--accent);
+    text-transform: uppercase; white-space: nowrap;
+  }
+  #tag-filter {
+    display: flex; gap: 6px; flex: 1;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  #tag-filter::-webkit-scrollbar { display: none; }
+  .tag-pill {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em;
+    padding: 4px 10px; border-radius: 2px; cursor: pointer;
+    border: 0.5px solid var(--border2); background: transparent;
+    color: var(--muted); white-space: nowrap; transition: all 0.15s;
+  }
+  .tag-pill:hover { color: var(--text); border-color: rgba(255,255,255,0.3); }
+  .tag-pill.active { background: var(--accent); color: #0a0a0a; border-color: var(--accent); font-weight: 700; }
+
+  /* ── CANVAS ── */
+  #canvas {
+    position: fixed; inset: 0; top: 52px; overflow: hidden;
+  }
+  #canvas.grabbing { cursor: crosshair; }
+  #svg-layer {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none;
+  }
+
+  /* ── LOADING ── */
+  #loading {
+    position: fixed; inset: 0; top: 52px; z-index: 90;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg);
+  }
+  #loading p {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em;
+    color: var(--muted); text-transform: uppercase;
+    animation: blink 1.2s ease-in-out infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:0.3} 50%{opacity:1} }
+
+  /* ── ERROR ── */
+  #error-banner {
+    position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
+    z-index: 200; padding: 10px 20px; border-radius: 2px;
+    background: #2a0a0a; border: 0.5px solid #f06060;
+    font-family: var(--mono); font-size: 10px; color: #f09090;
+    display: none;
+  }
+
+  /* ── NODES ── */
+  .vnode {
+    position: absolute; width: 160px;
+    background: var(--surface); border: 0.5px solid var(--border2);
+    border-radius: 3px; overflow: hidden; cursor: pointer;
+    transition: border-color 0.2s, transform 0.15s; user-select: none;
+  }
+  .vnode:hover { border-color: rgba(255,255,255,0.3); z-index: 50; }
+  .vnode.selected { border-color: var(--accent); z-index: 60; }
+  .vnode.dim { opacity: 0.12; }
+
+  .vnode .thumb {
+    width: 100%; aspect-ratio: 16/9;
+    display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden; background: #0d0d0d;
+  }
+  .vnode .thumb img {
+    width: 100%; height: 100%; object-fit: cover; position: absolute;
+    transition: opacity 0.3s;
+  }
+  .vnode .thumb .glyph {
+    font-family: var(--mono); font-size: 28px; opacity: 0.4;
+    position: relative; z-index: 1;
+  }
+  .vnode .thumb .play-hint {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity 0.2s; z-index: 3; font-size: 18px; color: #fff;
+  }
+  .vnode:hover .play-hint { opacity: 1; }
+
+  .vnode .info { padding: 9px 10px 8px; border-top: 0.5px solid var(--border); }
+  .vnode .vtitle {
+    font-size: 11px; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .vnode .vauthor {
+    font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .vnode .vtags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+  .vnode .vtag {
+    font-family: var(--mono); font-size: 8px; letter-spacing: 0.05em;
+    padding: 2px 5px; border-radius: 1px;
+    border: 0.5px solid var(--border2); color: var(--muted);
+  }
+
+  /* ── DETAIL PANEL ── */
+  #detail {
+    position: fixed; right: 0; top: 52px; bottom: 0; width: 300px; z-index: 150;
+    background: var(--surface); border-left: 0.5px solid var(--border2);
+    padding: 20px 18px; transform: translateX(100%);
+    transition: transform 0.25s ease; overflow-y: auto;
+  }
+  #detail.open { transform: translateX(0); }
+  #detail::-webkit-scrollbar { width: 3px; }
+  #detail::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  #detail .close-btn {
+    position: absolute; top: 12px; right: 12px;
+    font-family: var(--mono); font-size: 10px;
+    cursor: pointer; color: var(--muted); background: none; border: none; transition: color 0.15s;
+  }
+  #detail .close-btn:hover { color: var(--text); }
+
+  /* Vimeo embed */
+  #detail .d-vimeo {
+    width: 100%; aspect-ratio: 16/9; border-radius: 2px;
+    overflow: hidden; margin-bottom: 14px; background: #000;
+    position: relative;
+  }
+  #detail .d-vimeo iframe { width: 100%; height: 100%; border: none; }
+  #detail .d-vimeo .d-thumb-preview {
+    position: absolute; inset: 0; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #detail .d-vimeo .d-thumb-preview img {
+    width: 100%; height: 100%; object-fit: cover;
+  }
+  #detail .d-vimeo .d-thumb-preview .play-btn {
+    position: absolute; width: 44px; height: 44px; border-radius: 50%;
+    background: rgba(0,0,0,0.6); border: 1.5px solid rgba(255,255,255,0.6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; color: #fff; transition: all 0.15s;
+  }
+  #detail .d-vimeo .d-thumb-preview:hover .play-btn {
+    background: var(--accent); border-color: var(--accent); color: #0a0a0a;
+  }
+
+  #detail h3 { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  #detail .d-meta {
+    font-family: var(--mono); font-size: 9px; color: var(--muted); margin-bottom: 12px;
+  }
+  #detail .d-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 18px; }
+  #detail .d-tag {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.06em;
+    padding: 3px 8px; border-radius: 1px; cursor: pointer;
+    border: 0.5px solid var(--border2); color: var(--muted); transition: all 0.15s;
+  }
+  #detail .d-tag:hover { color: var(--accent); border-color: var(--accent); }
+  #detail .d-desc {
+    font-size: 12px; color: var(--muted); line-height: 1.6;
+    margin-bottom: 18px; font-style: italic;
+  }
+  #detail .d-section {
+    font-family: var(--mono); font-size: 8px; letter-spacing: 0.15em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+    padding-bottom: 6px; border-bottom: 0.5px solid var(--border);
+  }
+  #detail .d-connections { display: flex; flex-direction: column; gap: 6px; }
+  #detail .d-conn {
+    padding: 8px 10px; border-radius: 2px; cursor: pointer;
+    border: 0.5px solid var(--border); background: var(--surface2); transition: border-color 0.15s;
+  }
+  #detail .d-conn:hover { border-color: var(--border2); }
+  #detail .d-conn .cn { font-size: 11px; font-weight: 500; margin-bottom: 2px; }
+  #detail .d-conn .ct { font-family: var(--mono); font-size: 8px; color: var(--muted); }
+
+  /* ── HUD ── */
+  #hud {
+    position: fixed; bottom: 16px; left: 16px; z-index: 100;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  #hud button {
+    width: 30px; height: 30px; border-radius: 2px;
+    font-family: var(--mono); font-size: 14px;
+    border: 0.5px solid var(--border2); background: var(--surface);
+    color: var(--muted); cursor: pointer; transition: all 0.15s;
+  }
+  #hud button:hover { color: var(--text); border-color: rgba(255,255,255,0.3); }
+
+  #status {
+    position: fixed; bottom: 16px; right: 16px; z-index: 100;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em;
+    color: var(--muted); text-align: right;
+  }
+  #status span { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div id="logo">Videoarte Net</div>
+  <div id="tag-filter"></div>
+</div>
+
+<div id="canvas">
+  <svg id="svg-layer" xmlns="http://www.w3.org/2000/svg"></svg>
+</div>
+
+<div id="loading"><p>Cargando red…</p></div>
+<div id="error-banner"></div>
+
+<div id="hud">
+  <button onclick="zoom(1.2)">+</button>
+  <button onclick="zoom(0.83)">−</button>
+  <button onclick="resetView()" style="font-size:10px">⌂</button>
+</div>
+<div id="status">
+  <span id="st-pieces">0</span> piezas · <span id="st-tags">0</span> etiquetas
+</div>
+
+<div id="detail">
+  <button class="close-btn" onclick="closeDetail()">[ ✕ ]</button>
+  <div class="d-vimeo" id="d-vimeo"></div>
+  <h3 id="d-title"></h3>
+  <div class="d-meta" id="d-meta"></div>
+  <div class="d-tags" id="d-tags"></div>
+  <div id="d-desc" class="d-desc" style="display:none"></div>
+  <div class="d-section">Conexiones por etiqueta</div>
+  <div class="d-connections" id="d-connections"></div>
+</div>
+
+<script>
+// ─────────────────────────────────────
+//  CONFIGURACIÓN — cambia esta URL
+//  por la de tu servidor en producción
+// ─────────────────────────────────────
+const API = 'https://rychiqnzmeyzedxlqfnt.supabase.co';
+
+const GLYPHS  = ['◉','◈','▣','◫','◬','◪','◯','⬡','⬢','◐','◑','◒','◓'];
+const COLORS  = ['#c8f060','#60d0f0','#f060a8','#f0a060','#a060f0','#60f0a8','#f06060'];
+const NODE_W  = 160, NODE_H = 118;
+
+let pieces      = [];
+let transform   = { x: 60, y: 40, scale: 1 };
+let selectedId  = null;
+let activeTag   = null;
+let wasDragging = false;
+let isDraggingNode = false;
+
+// ─── CARGA INICIAL ───
+async function loadPieces() {
+  try {
+    const res = await fetch(`${API}/pieces`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    // Distribuir en cuadrícula si no tienen posición guardada
+    pieces = data.map((p, i) => ({
+      ...p,
+      g: GLYPHS[i % GLYPHS.length],
+      c: COLORS[i % COLORS.length],
+      x: 80 + (i % 4) * 220 + (Math.random() - 0.5) * 60,
+      y: 60 + Math.floor(i / 4) * 200 + (Math.random() - 0.5) * 40,
+    }));
+
+    document.getElementById('loading').style.display = 'none';
+    renderAll();
+  } catch (err) {
+    document.getElementById('loading').style.display = 'none';
+    showError('No se pudo conectar con el servidor: ' + err.message);
+  }
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-banner');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 5000);
+}
+
+// ─── RENDER ───
+function renderAll() {
+  renderNodes();
+  renderEdges();
+  renderTagFilter();
+  updateStatus();
+}
+
+function renderNodes() {
+  const canvas = document.getElementById('canvas');
+  canvas.querySelectorAll('.vnode').forEach(n => n.remove());
+
+  pieces.forEach(p => {
+    const el = document.createElement('div');
+    el.className = 'vnode'
+      + (selectedId === p.id ? ' selected' : '')
+      + (activeTag && !p.tags.includes(activeTag) ? ' dim' : '');
+    el.id = 'node-' + p.id;
+    el.style.left = (p.x * transform.scale + transform.x) + 'px';
+    el.style.top  = (p.y * transform.scale + transform.y) + 'px';
+    el.style.transform = `scale(${transform.scale})`;
+    el.style.transformOrigin = 'top left';
+
+    const tagsHTML = p.tags.map(t => `<span class="vtag">${t}</span>`).join('');
+
+    let thumbContent = `<span class="glyph" style="color:${p.c}">${p.g}</span>`;
+    if (p.vimeo_thumb) {
+      thumbContent = `<img src="${p.vimeo_thumb}" alt="" loading="lazy"><div class="play-hint">▶</div>`;
+    }
+
+    el.innerHTML = `
+      <div class="thumb" style="background:${p.c}0d">${thumbContent}</div>
+      <div class="info">
+        <div class="vtitle">${p.title}</div>
+        <div class="vauthor">${p.author}${p.year ? ' · ' + p.year : ''}</div>
+        <div class="vtags">${tagsHTML}</div>
+      </div>`;
+
+    el.addEventListener('mousedown', e => startDragNode(e, p.id));
+    el.addEventListener('click', () => { if (!wasDragging) selectPiece(p.id); });
+    canvas.appendChild(el);
+  });
+}
+
+function positionNodes() {
+  pieces.forEach(p => {
+    const el = document.getElementById('node-' + p.id);
+    if (!el) return;
+    el.style.left = (p.x * transform.scale + transform.x) + 'px';
+    el.style.top  = (p.y * transform.scale + transform.y) + 'px';
+    el.style.transform = `scale(${transform.scale})`;
+  });
+}
+
+function nodeCenter(p) {
+  return {
+    x: p.x * transform.scale + transform.x + NODE_W * transform.scale / 2,
+    y: p.y * transform.scale + transform.y + NODE_H * transform.scale / 2,
+  };
+}
+
+function shared(a, b) { return a.tags.filter(t => b.tags.includes(t)); }
+
+function renderEdges() {
+  const svg = document.getElementById('svg-layer');
+  svg.innerHTML = '';
+  for (let i = 0; i < pieces.length; i++) {
+    for (let j = i + 1; j < pieces.length; j++) {
+      const a = pieces[i], b = pieces[j];
+      const s = shared(a, b);
+      if (!s.length) continue;
+      const ca = nodeCenter(a), cb = nodeCenter(b);
+      const strength = Math.min(s.length, 3);
+      const isSel  = selectedId && (selectedId === a.id || selectedId === b.id);
+      const tagHit = activeTag && s.includes(activeTag);
+      const tagMis = activeTag && !s.includes(activeTag);
+
+      let opacity = 0.07 + strength * 0.05;
+      let sw = 0.5 + strength * 0.3;
+      let color = '#555550';
+
+      if (isSel)    { opacity = 0.9; sw = 1.5 + strength * 0.5; color = selectedId === a.id ? a.c : b.c; }
+      else if (tagHit) { opacity = 0.7; sw = 1.2; color = '#c8f060'; }
+      else if (tagMis) { opacity = 0.03; }
+
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', ca.x); line.setAttribute('y1', ca.y);
+      line.setAttribute('x2', cb.x); line.setAttribute('y2', cb.y);
+      line.setAttribute('stroke', color);
+      line.setAttribute('stroke-width', sw);
+      line.setAttribute('opacity', opacity);
+      svg.appendChild(line);
+    }
+  }
+}
+
+function renderTagFilter() {
+  const tags = [...new Set(pieces.flatMap(p => p.tags))].sort();
+  const c = document.getElementById('tag-filter');
+  c.innerHTML = '';
+  tags.forEach(t => {
+    const pill = document.createElement('div');
+    pill.className = 'tag-pill' + (activeTag === t ? ' active' : '');
+    pill.textContent = t;
+    pill.onclick = () => { activeTag = activeTag === t ? null : t; renderAll(); };
+    c.appendChild(pill);
+  });
+}
+
+// ─── DETAIL ───
+function selectPiece(id) {
+  selectedId = selectedId === id ? null : id;
+  renderAll();
+  selectedId ? showDetail(selectedId) : closeDetail();
+}
+
+function showDetail(id) {
+  const p = pieces.find(x => x.id === id);
+  if (!p) return;
+
+  document.getElementById('d-title').textContent = p.title;
+  document.getElementById('d-meta').textContent =
+    '// ' + p.author + (p.year ? ' · ' + p.year : '');
+
+  // Vimeo: muestra la miniatura primero, al hacer clic carga el iframe
+  const vimeo = document.getElementById('d-vimeo');
+  if (p.vimeo_thumb) {
+    vimeo.innerHTML = `
+      <div class="d-thumb-preview" onclick="loadVimeo(this, '${p.vimeo_url}')">
+        <img src="${p.vimeo_thumb}" alt="${p.title}">
+        <div class="play-btn">▶</div>
+      </div>`;
+  } else {
+    vimeo.innerHTML = `
+      <div class="d-thumb-preview" onclick="loadVimeo(this, '${p.vimeo_url}')"
+           style="background:${p.c}18;display:flex;align-items:center;justify-content:center;">
+        <div class="play-btn">▶</div>
+      </div>`;
+  }
+
+  document.getElementById('d-tags').innerHTML = p.tags
+    .map(t => `<span class="d-tag" onclick="filterTag('${t}')">${t}</span>`).join('');
+
+  const descEl = document.getElementById('d-desc');
+  if (p.description) { descEl.textContent = p.description; descEl.style.display = 'block'; }
+  else descEl.style.display = 'none';
+
+  const conns = pieces.filter(q => q.id !== p.id && shared(p, q).length > 0);
+  document.getElementById('d-connections').innerHTML = conns.length
+    ? conns.map(q => `<div class="d-conn" onclick="selectPiece('${q.id}')">
+        <div class="cn">${q.title}</div>
+        <div class="ct">${shared(p, q).join(' · ')}</div>
+      </div>`).join('')
+    : `<div style="font-family:var(--mono);font-size:9px;color:var(--muted)">Sin conexiones aún</div>`;
+
+  document.getElementById('detail').classList.add('open');
+}
+
+function loadVimeo(el, url) {
+  el.parentElement.innerHTML = `<iframe src="${url}?autoplay=1&title=0&byline=0&portrait=0" allow="autoplay; fullscreen" allowfullscreen></iframe>`;
+}
+
+function filterTag(t) { activeTag = t; renderAll(); }
+
+function closeDetail() {
+  selectedId = null;
+  document.getElementById('detail').classList.remove('open');
+  renderAll();
+}
+
+// ─── DRAG NODES ───
+function startDragNode(e, id) {
+  e.stopPropagation();
+  isDraggingNode = true; wasDragging = false;
+  const p = pieces.find(x => x.id === id);
+  const offX = e.clientX - (p.x * transform.scale + transform.x);
+  const offY = e.clientY - (p.y * transform.scale + transform.y);
+  const move = mv => {
+    wasDragging = true;
+    p.x = (mv.clientX - offX - transform.x) / transform.scale;
+    p.y = (mv.clientY - offY - transform.y) / transform.scale;
+    positionNodes(); renderEdges();
+  };
+  const up = () => {
+    isDraggingNode = false;
+    document.removeEventListener('mousemove', move);
+    document.removeEventListener('mouseup', up);
+  };
+  document.addEventListener('mousemove', move);
+  document.addEventListener('mouseup', up);
+}
+
+// ─── PAN & ZOOM ───
+const canvas = document.getElementById('canvas');
+let isPanning = false, panX0, panY0, tx0, ty0;
+
+canvas.addEventListener('mousedown', e => {
+  if (isDraggingNode) return;
+  isPanning = true; panX0 = e.clientX; panY0 = e.clientY;
+  tx0 = transform.x; ty0 = transform.y;
+  canvas.classList.add('grabbing');
+});
+window.addEventListener('mousemove', e => {
+  if (!isPanning) return;
+  transform.x = tx0 + (e.clientX - panX0);
+  transform.y = ty0 + (e.clientY - panY0);
+  positionNodes(); renderEdges();
+});
+window.addEventListener('mouseup', () => { isPanning = false; canvas.classList.remove('grabbing'); });
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const f = e.deltaY < 0 ? 1.1 : 0.91;
+  const r = canvas.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  transform.x = mx - (mx - transform.x) * f;
+  transform.y = my - (my - transform.y) * f;
+  transform.scale = Math.min(Math.max(transform.scale * f, 0.2), 4);
+  positionNodes(); renderEdges();
+}, { passive: false });
+
+let touch0 = null;
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 1)
+    touch0 = { x: e.touches[0].clientX, y: e.touches[0].clientY, tx: transform.x, ty: transform.y };
+});
+canvas.addEventListener('touchmove', e => {
+  if (touch0 && e.touches.length === 1) {
+    transform.x = touch0.tx + (e.touches[0].clientX - touch0.x);
+    transform.y = touch0.ty + (e.touches[0].clientY - touch0.y);
+    positionNodes(); renderEdges();
+  }
+});
+canvas.addEventListener('touchend', () => { touch0 = null; });
+
+function zoom(f) {
+  const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;
+  transform.x = cx - (cx - transform.x) * f;
+  transform.y = cy - (cy - transform.y) * f;
+  transform.scale = Math.min(Math.max(transform.scale * f, 0.2), 4);
+  positionNodes(); renderEdges();
+}
+
+function resetView() {
+  transform = { x: 60, y: 40, scale: 1 };
+  positionNodes(); renderEdges();
+}
+
+function updateStatus() {
+  const tags = new Set(pieces.flatMap(p => p.tags));
+  document.getElementById('st-pieces').textContent = pieces.length;
+  document.getElementById('st-tags').textContent   = tags.size;
+}
+
+// ─── ARRANQUE ───
+loadPieces();
+</script>
+</body>
+</html>
