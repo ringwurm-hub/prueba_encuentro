@@ -1,5 +1,19 @@
+# Environment variables (CRÍTICO)
 .env
 server/.env
+
+# Dependencies
 node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Build outputs
 dist/
+build/
