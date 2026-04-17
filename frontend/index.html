@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VIDEOARTE NET</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111;
+    --surface2: #1a1a1a;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.14);
+    --text: #e8e8e2;
+    --muted: #666660;
+    --accent: #c8f060;       /* conexiones oficiales */
+    --user-color: #60c8f0;   /* conexiones de usuarios */
+    --mono: 'Space Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; }
+
+  /* ── HEADER ── */
+  #header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: 52px; display: flex; align-items: center; gap: 14px;
+    padding: 0 18px;
+    background: rgba(10,10,10,0.93); backdrop-filter: blur(12px);
+    border-bottom: 0.5px solid var(--border);
+  }
+  #logo { font-family: var(--mono); font-size: 11px; letter-spacing: 0.2em; color: var(--accent); white-space: nowrap; }
+
+  /* Layer toggles */
+  .layer-toggle {
+    display: flex; align-items: center; gap: 7px; cursor: pointer;
+    padding: 4px 10px; border-radius: 2px;
+    border: 0.5px solid var(--border2);
+    background: transparent; transition: all 0.15s; white-space: nowrap;
+  }
+  .layer-toggle:hover { border-color: rgba(255,255,255,0.25); }
+  .layer-toggle.on { border-color: var(--color, var(--accent)); background: color-mix(in srgb, var(--color, var(--accent)) 10%, transparent); }
+  .layer-toggle .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--color, var(--accent)); opacity: 0.35; transition: opacity 0.15s;
+  }
+  .layer-toggle.on .dot { opacity: 1; }
+  .layer-toggle span { font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; color: var(--muted); transition: color 0.15s; }
+  .layer-toggle.on span { color: var(--text); }
+
+  #layer-sep { width: 0.5px; height: 20px; background: var(--border2); flex-shrink: 0; }
+
+  #tag-filter { display: flex; gap: 5px; flex: 1; overflow-x: auto; scrollbar-width: none; }
+  #tag-filter::-webkit-scrollbar { display: none; }
+  .tag-pill {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em;
+    padding: 4px 9px; border-radius: 2px; cursor: pointer;
+    border: 0.5px solid var(--border2); background: transparent; color: var(--muted);
+    white-space: nowrap; transition: all 0.15s;
+  }
+  .tag-pill:hover { color: var(--text); border-color: rgba(255,255,255,0.25); }
+  .tag-pill.active { background: var(--accent); color: #0a0a0a; border-color: var(--accent); font-weight: 700; }
+  .tag-pill.user-tag { border-style: dashed; }
+  .tag-pill.user-tag.active { background: var(--user-color); color: #0a0a0a; border-color: var(--user-color); }
+
+  /* Auth button */
+  #auth-btn {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 6px 12px; border-radius: 2px; cursor: pointer; white-space: nowrap;
+    border: 0.5px solid var(--border2); background: transparent; color: var(--muted); transition: all 0.15s;
+  }
+  #auth-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.3); }
+  #auth-btn.logged { color: var(--accent); border-color: var(--accent); }
+
+  /* ── CANVAS ── */
+  #canvas { position: fixed; inset: 0; top: 52px; overflow: hidden; }
+  #canvas.grabbing { cursor: crosshair; }
+  #svg-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+
+  /* ── LOADING / ERROR ── */
+  #loading {
+    position: fixed; inset: 0; top: 52px; z-index: 90;
+    display: flex; align-items: center; justify-content: center; background: var(--bg);
+  }
+  #loading p { font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em; color: var(--muted); animation: blink 1.2s infinite; }
+  @keyframes blink { 0%,100%{opacity:.3} 50%{opacity:1} }
+  #error-toast {
+    position: fixed; top: 62px; left: 50%; transform: translateX(-50%); z-index: 300;
+    padding: 9px 18px; border-radius: 2px; background: #1a0808;
+    border: 0.5px solid #f06060; font-family: var(--mono); font-size: 9px; color: #f09090; display: none;
+  }
+
+  /* ── NODES ── */
+  .vnode {
+    position: absolute; width: 158px;
+    background: var(--surface); border: 0.5px solid var(--border2);
+    border-radius: 3px; overflow: hidden; cursor: pointer;
+    transition: border-color 0.2s; user-select: none;
+  }
+  .vnode:hover { border-color: rgba(255,255,255,0.28); z-index: 50; }
+  .vnode.selected { border-color: var(--accent); z-index: 60; }
+  .vnode.dim { opacity: 0.1; }
+  .vnode .thumb {
+    width: 100%; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden; background: #0d0d0d;
+  }
+  .vnode .thumb img { width: 100%; height: 100%; object-fit: cover; position: absolute; }
+  .vnode .thumb .glyph { font-family: var(--mono); font-size: 26px; opacity: 0.4; position: relative; z-index: 1; }
+  .vnode .thumb .play-hint {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity 0.2s; z-index: 3; font-size: 16px; color: #fff;
+  }
+  .vnode:hover .play-hint { opacity: 1; }
+  .vnode .info { padding: 8px 9px 7px; border-top: 0.5px solid var(--border); }
+  .vnode .vtitle { font-size: 11px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vnode .vauthor { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vnode .vtags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
+  .vnode .vtag {
+    font-family: var(--mono); font-size: 8px; padding: 1px 5px; border-radius: 1px;
+    border: 0.5px solid var(--border2); color: var(--muted);
+  }
+  .vnode .vtag.user { border-color: rgba(96,200,240,0.35); color: rgba(96,200,240,0.7); border-style: dashed; }
+
+  /* ── AUTH MODAL ── */
+  .modal-bg {
+    position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.75);
+    display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px);
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 0.5px solid var(--border2); border-radius: 4px;
+    padding: 26px; width: 340px; max-width: 94vw;
+  }
+  .modal h2 { font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em; color: var(--accent); margin-bottom: 20px; }
+  .modal .field { margin-bottom: 12px; }
+  .modal .field label { font-family: var(--mono); font-size: 8px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 4px; }
+  .modal .field input {
+    width: 100%; font-size: 13px; padding: 7px 10px; border-radius: 2px;
+    border: 0.5px solid var(--border2); background: var(--surface2); color: var(--text); font-family: var(--sans);
+  }
+  .modal .field input:focus { outline: none; border-color: rgba(255,255,255,0.3); }
+  .modal .modal-err { font-family: var(--mono); font-size: 9px; color: #f09090; margin-bottom: 10px; min-height: 14px; }
+  .modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  .modal .modal-actions button {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 7px 14px; border-radius: 2px; cursor: pointer; transition: all 0.15s;
+    border: 0.5px solid var(--border2); background: transparent; color: var(--muted);
+  }
+  .modal .modal-actions button:hover { color: var(--text); }
+  .modal .modal-actions button.primary { border-color: var(--accent); color: var(--accent); }
+  .modal .modal-actions button.primary:hover { background: var(--accent); color: #0a0a0a; }
+  .modal .switch-link {
+    font-family: var(--mono); font-size: 9px; color: var(--muted); text-align: center;
+    margin-top: 14px; cursor: pointer; transition: color 0.15s;
+  }
+  .modal .switch-link:hover { color: var(--text); }
+
+  /* ── DETAIL PANEL ── */
+  #detail {
+    position: fixed; right: 0; top: 52px; bottom: 0; width: 290px; z-index: 150;
+    background: var(--surface); border-left: 0.5px solid var(--border2);
+    padding: 18px 16px; transform: translateX(100%); transition: transform 0.25s ease; overflow-y: auto;
+  }
+  #detail.open { transform: translateX(0); }
+  #detail::-webkit-scrollbar { width: 3px; }
+  #detail::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  #detail .close-btn {
+    position: absolute; top: 12px; right: 12px; font-family: var(--mono); font-size: 10px;
+    cursor: pointer; color: var(--muted); background: none; border: none;
+  }
+  #detail .close-btn:hover { color: var(--text); }
+  #detail .d-vimeo { width: 100%; aspect-ratio: 16/9; border-radius: 2px; overflow: hidden; margin-bottom: 13px; background: #000; position: relative; }
+  #detail .d-vimeo iframe { width: 100%; height: 100%; border: none; }
+  #detail .d-vimeo .d-preview { position: absolute; inset: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  #detail .d-vimeo .d-preview img { width: 100%; height: 100%; object-fit: cover; }
+  #detail .d-vimeo .d-play-btn {
+    position: absolute; width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(0,0,0,0.6); border: 1.5px solid rgba(255,255,255,0.6);
+    display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; transition: all 0.15s;
+  }
+  #detail .d-vimeo .d-preview:hover .d-play-btn { background: var(--accent); border-color: var(--accent); color: #0a0a0a; }
+  #detail h3 { font-size: 13px; font-weight: 500; margin-bottom: 3px; }
+  #detail .d-meta { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-bottom: 11px; }
+  #detail .d-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 14px; }
+  #detail .d-tag {
+    font-family: var(--mono); font-size: 9px; padding: 3px 8px; border-radius: 1px; cursor: pointer;
+    border: 0.5px solid var(--border2); color: var(--muted); transition: all 0.15s;
+  }
+  #detail .d-tag:hover { color: var(--accent); border-color: var(--accent); }
+  #detail .d-tag.user-tag { border-style: dashed; border-color: rgba(96,200,240,0.3); color: rgba(96,200,240,0.6); }
+  #detail .d-tag.user-tag:hover { color: var(--user-color); border-color: var(--user-color); }
+  #detail .d-tag.mine { border-color: rgba(96,200,240,0.5); color: var(--user-color); }
+  #detail .d-desc { font-size: 12px; color: var(--muted); line-height: 1.6; margin-bottom: 14px; font-style: italic; }
+
+  /* Add tag form */
+  #detail .add-tag-row { display: flex; gap: 6px; margin-bottom: 16px; }
+  #detail .add-tag-row input {
+    flex: 1; font-family: var(--mono); font-size: 10px; padding: 5px 8px;
+    border: 0.5px solid var(--border2); border-radius: 2px;
+    background: var(--surface2); color: var(--text);
+  }
+  #detail .add-tag-row input:focus { outline: none; border-color: rgba(96,200,240,0.5); }
+  #detail .add-tag-row input::placeholder { color: var(--muted); }
+  #detail .add-tag-row button {
+    font-family: var(--mono); font-size: 9px; padding: 5px 10px; border-radius: 2px; cursor: pointer;
+    border: 0.5px solid rgba(96,200,240,0.4); background: transparent; color: var(--user-color); transition: all 0.15s;
+  }
+  #detail .add-tag-row button:hover { background: rgba(96,200,240,0.1); }
+
+  #detail .d-section {
+    font-family: var(--mono); font-size: 8px; letter-spacing: 0.15em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 7px; padding-bottom: 5px; border-bottom: 0.5px solid var(--border);
+  }
+  #detail .d-connections { display: flex; flex-direction: column; gap: 5px; }
+  #detail .d-conn {
+    padding: 7px 9px; border-radius: 2px; cursor: pointer;
+    border: 0.5px solid var(--border); background: var(--surface2); transition: border-color 0.15s;
+  }
+  #detail .d-conn:hover { border-color: var(--border2); }
+  #detail .d-conn.user-conn { border-style: dashed; border-color: rgba(96,200,240,0.2); }
+  #detail .d-conn.user-conn:hover { border-color: rgba(96,200,240,0.4); }
+  #detail .d-conn .cn { font-size: 11px; font-weight: 500; margin-bottom: 1px; }
+  #detail .d-conn .ct { font-family: var(--mono); font-size: 8px; color: var(--muted); }
+
+  /* My tags list in detail */
+  #detail .my-tag-item {
+    display: flex; align-items: center; gap: 6px; padding: 5px 0;
+    border-bottom: 0.5px solid var(--border);
+  }
+  #detail .my-tag-item .tag-name { font-family: var(--mono); font-size: 10px; color: var(--user-color); flex: 1; }
+  #detail .my-tag-item .pub-btn {
+    font-family: var(--mono); font-size: 8px; padding: 2px 7px; border-radius: 1px; cursor: pointer;
+    border: 0.5px solid var(--border2); background: transparent; color: var(--muted); transition: all 0.15s;
+    white-space: nowrap;
+  }
+  #detail .my-tag-item .pub-btn:hover { color: var(--user-color); border-color: var(--user-color); }
+  #detail .my-tag-item .pub-btn.is-public { color: var(--user-color); border-color: rgba(96,200,240,0.4); }
+  #detail .my-tag-item .del-btn {
+    font-family: var(--mono); font-size: 9px; cursor: pointer; color: var(--muted);
+    background: none; border: none; transition: color 0.15s;
+  }
+  #detail .my-tag-item .del-btn:hover { color: #f06060; }
+
+  /* ── HUD ── */
+  #hud { position: fixed; bottom: 16px; left: 16px; z-index: 100; display: flex; flex-direction: column; gap: 4px; }
+  #hud button {
+    width: 30px; height: 30px; border-radius: 2px; font-family: var(--mono); font-size: 13px;
+    border: 0.5px solid var(--border2); background: var(--surface); color: var(--muted); cursor: pointer; transition: all 0.15s;
+  }
+  #hud button:hover { color: var(--text); }
+  #status { position: fixed; bottom: 16px; right: 16px; z-index: 100; font-family: var(--mono); font-size: 9px; letter-spacing: 0.08em; color: var(--muted); text-align: right; line-height: 1.6; }
+  #status .s-official { color: var(--accent); }
+  #status .s-user { color: var(--user-color); }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div id="header">
+  <div id="logo">VNET</div>
+
+  <!-- Layer toggles -->
+  <div class="layer-toggle on" id="toggle-official" style="--color:var(--accent)" onclick="toggleLayer('official')">
+    <div class="dot"></div><span>OFICIAL</span>
+  </div>
+  <div class="layer-toggle" id="toggle-users" style="--color:var(--user-color)" onclick="toggleLayer('users')">
+    <div class="dot"></div><span>USUARIOS</span>
+  </div>
+
+  <div id="layer-sep"></div>
+
+  <div id="tag-filter"></div>
+  <button id="auth-btn" onclick="openAuthModal()">Entrar</button>
+</div>
+
+<div id="canvas">
+  <svg id="svg-layer" xmlns="http://www.w3.org/2000/svg"></svg>
+</div>
+
+<div id="loading"><p>Cargando red…</p></div>
+<div id="error-toast"></div>
+
+<!-- HUD -->
+<div id="hud">
+  <button onclick="zoom(1.2)">+</button>
+  <button onclick="zoom(0.83)">−</button>
+  <button onclick="resetView()" style="font-size:10px">⌂</button>
+</div>
+<div id="status">
+  <span id="st-pieces" class="s-official">0</span> piezas<br>
+  <span id="st-otags" class="s-official">0</span> tags oficiales ·
+  <span id="st-utags" class="s-user">0</span> tags usuarios
+</div>
+
+<!-- AUTH MODAL -->
+<div class="modal-bg" id="auth-modal">
+  <div class="modal">
+    <h2 id="auth-modal-title">// Entrar</h2>
+    <div class="field"><label>Email</label><input id="auth-email" type="email" placeholder="tu@email.com"></div>
+    <div class="field"><label>Contraseña</label><input id="auth-pass" type="password" placeholder="••••••••"></div>
+    <div class="modal-err" id="auth-err"></div>
+    <div class="modal-actions">
+      <button onclick="closeAuthModal()">Cancelar</button>
+      <button class="primary" id="auth-submit-btn" onclick="submitAuth()">Entrar</button>
+    </div>
+    <div class="switch-link" id="auth-switch" onclick="toggleAuthMode()">¿No tienes cuenta? Regístrate</div>
+  </div>
+</div>
+
+<!-- DETAIL PANEL -->
+<div id="detail">
+  <button class="close-btn" onclick="closeDetail()">[ ✕ ]</button>
+  <div class="d-vimeo" id="d-vimeo"></div>
+  <h3 id="d-title"></h3>
+  <div class="d-meta" id="d-meta"></div>
+  <div class="d-tags" id="d-tags"></div>
+  <div id="d-desc" class="d-desc" style="display:none"></div>
+
+  <!-- Add tag (visible only when logged in) -->
+  <div id="add-tag-section" style="display:none">
+    <div class="d-section">Añadir mi tag</div>
+    <div class="add-tag-row">
+      <input id="new-tag-input" type="text" placeholder="nuevo tag…" maxlength="40">
+      <button onclick="addUserTag()">+ Añadir</button>
+    </div>
+  </div>
+
+  <!-- My tags on this piece -->
+  <div id="my-tags-section" style="display:none">
+    <div class="d-section">Mis tags en esta pieza</div>
+    <div id="my-tags-list"></div>
+  </div>
+
+  <div class="d-section" style="margin-top:14px">Conexiones</div>
+  <div class="d-connections" id="d-connections"></div>
+</div>
+
+<script>
+// ─────────────────────────────────────────
+//  CONFIG — cambia por tu URL de producción
+// ─────────────────────────────────────────
+const API = 'http://localhost:3000';
+
+// ── STATE ──
+const GLYPHS = ['◉','◈','▣','◫','◬','◪','◯','⬡','⬢','◐','◑','◒','◓'];
+const COLORS = ['#c8f060','#f0c060','#f06090','#a060f0','#60f0a8','#f07060','#60c8f0'];
+const NODE_W = 158, NODE_H = 116;
+
+let pieces       = [];
+let userTags     = [];   // tags públicos de todos los usuarios
+let myTags       = [];   // tags del usuario actual (privados + públicos)
+let transform    = { x: 60, y: 40, scale: 1 };
+let selectedId   = null;
+let activeTag    = null;
+let activeTagType = null; // 'official' | 'user'
+let layers       = { official: true, users: false };
+let session      = null;  // { access_token, user }
+let authMode     = 'login'; // 'login' | 'register'
+let wasDragging  = false;
+let isDraggingNode = false;
+
+// ── BOOT ──
+async function boot() {
+  // Recuperar sesión guardada
+  const saved = localStorage.getItem('vnet_session');
+  if (saved) {
+    try {
+      session = JSON.parse(saved);
+      updateAuthBtn();
+    } catch(e) { localStorage.removeItem('vnet_session'); }
+  }
+
+  await Promise.all([
+    loadPieces(),
+    loadUserTags(),
+    session ? loadMyTags() : Promise.resolve()
+  ]);
+
+  document.getElementById('loading').style.display = 'none';
+  renderAll();
+}
+
+// ── DATA FETCHING ──
+async function loadPieces() {
+  try {
+    const r = await fetch(`${API}/pieces`);
+    const data = await r.json();
+    pieces = data.map((p, i) => ({
+      ...p,
+      g: GLYPHS[i % GLYPHS.length],
+      c: COLORS[i % COLORS.length],
+      x: 80 + (i % 4) * 220 + (Math.random() - 0.5) * 50,
+      y: 60 + Math.floor(i / 4) * 200 + (Math.random() - 0.5) * 40,
+    }));
+  } catch(e) { showToast('No se pudo conectar con el servidor'); }
+}
+
+async function loadUserTags() {
+  try {
+    const r = await fetch(`${API}/user-tags/public`);
+    userTags = await r.json();
+  } catch(e) { userTags = []; }
+}
+
+async function loadMyTags() {
+  if (!session) return;
+  try {
+    const r = await fetch(`${API}/user-tags/mine`, {
+      headers: { Authorization: `Bearer ${session.access_token}` }
+    });
+    myTags = await r.json();
+  } catch(e) { myTags = []; }
+}
+
+// ── RENDER ──
+function renderAll() {
+  renderNodes();
+  renderEdges();
+  renderTagFilter();
+  updateStatus();
+}
+
+// Construye mapa piece_id → [tags de usuario] para acceso rápido
+function buildUserTagMap(tagList) {
+  const map = {};
+  tagList.forEach(t => {
+    if (!map[t.piece_id]) map[t.piece_id] = [];
+    map[t.piece_id].push(t.tag);
+  });
+  return map;
+}
+
+function renderNodes() {
+  const canvas = document.getElementById('canvas');
+  canvas.querySelectorAll('.vnode').forEach(n => n.remove());
+
+  const pubMap = buildUserTagMap(userTags);
+  const myMap  = buildUserTagMap(myTags);
+
+  pieces.forEach(p => {
+    // Tags combinados para determinar dim
+    const allUserTagsForPiece = [...new Set([
+      ...(pubMap[p.id] || []),
+      ...(myMap[p.id]  || [])
+    ])];
+
+    let dim = false;
+    if (activeTag) {
+      if (activeTagType === 'official') dim = !p.tags.includes(activeTag);
+      if (activeTagType === 'user')     dim = !allUserTagsForPiece.includes(activeTag);
+    }
+
+    const el = document.createElement('div');
+    el.className = 'vnode' + (selectedId === p.id ? ' selected' : '') + (dim ? ' dim' : '');
+    el.id = 'node-' + p.id;
+    el.style.left = (p.x * transform.scale + transform.x) + 'px';
+    el.style.top  = (p.y * transform.scale + transform.y) + 'px';
+    el.style.transform = `scale(${transform.scale})`;
+    el.style.transformOrigin = 'top left';
+
+    // Tags oficiales
+    let tagsHTML = p.tags.map(t => `<span class="vtag">${t}</span>`).join('');
+    // Tags de usuario visibles (públicos + los míos)
+    const visibleUserTags = [...new Set([...(pubMap[p.id]||[]), ...(myMap[p.id]||[])])];
+    if (layers.users && visibleUserTags.length) {
+      tagsHTML += visibleUserTags.map(t => `<span class="vtag user">${t}</span>`).join('');
+    }
+
+    const thumb = p.vimeo_thumb
+      ? `<img src="${p.vimeo_thumb}" alt="" loading="lazy"><div class="play-hint">▶</div>`
+      : `<span class="glyph" style="color:${p.c}">${p.g}</span>`;
+
+    el.innerHTML = `
+      <div class="thumb" style="background:${p.c}0d">${thumb}</div>
+      <div class="info">
+        <div class="vtitle">${p.title}</div>
+        <div class="vauthor">${p.author}${p.year ? ' · ' + p.year : ''}</div>
+        <div class="vtags">${tagsHTML}</div>
+      </div>`;
+
+    el.addEventListener('mousedown', e => startDragNode(e, p.id));
+    el.addEventListener('click', () => { if (!wasDragging) selectPiece(p.id); });
+    canvas.appendChild(el);
+  });
+}
+
+function positionNodes() {
+  pieces.forEach(p => {
+    const el = document.getElementById('node-' + p.id);
+    if (!el) return;
+    el.style.left = (p.x * transform.scale + transform.x) + 'px';
+    el.style.top  = (p.y * transform.scale + transform.y) + 'px';
+    el.style.transform = `scale(${transform.scale})`;
+  });
+}
+
+function nodeCenter(p) {
+  return {
+    x: p.x * transform.scale + transform.x + NODE_W * transform.scale / 2,
+    y: p.y * transform.scale + transform.y + NODE_H * transform.scale / 2,
+  };
+}
+
+function sharedOfficialTags(a, b)  { return a.tags.filter(t => b.tags.includes(t)); }
+
+function sharedUserTags(a, b, tagMap) {
+  const ta = tagMap[a.id] || [], tb = tagMap[b.id] || [];
+  return ta.filter(t => tb.includes(t));
+}
+
+function renderEdges() {
+  const svg = document.getElementById('svg-layer');
+  svg.innerHTML = '';
+
+  // Build combined public + my tags map
+  const combinedUserMap = buildUserTagMap([
+    ...userTags,
+    ...myTags.filter(t => !userTags.find(u => u.id === t.id))
+  ]);
+
+  for (let i = 0; i < pieces.length; i++) {
+    for (let j = i + 1; j < pieces.length; j++) {
+      const a = pieces[i], b = pieces[j];
+      const ca = nodeCenter(a), cb = nodeCenter(b);
+      const isSel = selectedId && (selectedId === a.id || selectedId === b.id);
+
+      // ── Official edges ──
+      if (layers.official) {
+        const s = sharedOfficialTags(a, b);
+        if (s.length) {
+          const strength = Math.min(s.length, 3);
+          const tagHit = activeTag && activeTagType === 'official' && s.includes(activeTag);
+          const tagMis = activeTag && activeTagType === 'official' && !s.includes(activeTag);
+          let opacity = 0.07 + strength * 0.05;
+          let sw = 0.5 + strength * 0.3;
+          let color = '#888880';
+          if (isSel)       { opacity = 0.9; sw = 1.5 + strength * 0.5; color = selectedId === a.id ? a.c : b.c; }
+          else if (tagHit) { opacity = 0.8; sw = 1.4; color = '#c8f060'; }
+          else if (tagMis) { opacity = 0.03; }
+          drawLine(svg, ca, cb, color, sw, opacity, false);
+        }
+      }
+
+      // ── User edges ──
+      if (layers.users) {
+        const su = sharedUserTags(a, b, combinedUserMap);
+        if (su.length) {
+          const strength = Math.min(su.length, 3);
+          const tagHit = activeTag && activeTagType === 'user' && su.includes(activeTag);
+          const tagMis = activeTag && activeTagType === 'user' && !su.includes(activeTag);
+          let opacity = 0.12 + strength * 0.08;
+          let sw = 0.5 + strength * 0.4;
+          let color = '#60c8f0';
+          if (isSel)       { opacity = 0.9; sw = 1.5 + strength * 0.5; color = '#60c8f0'; }
+          else if (tagHit) { opacity = 0.85; sw = 1.4; color = '#60c8f0'; }
+          else if (tagMis) { opacity = 0.03; }
+          drawLine(svg, ca, cb, color, sw, opacity, true); // dashed
+        }
+      }
+    }
+  }
+}
+
+function drawLine(svg, ca, cb, color, sw, opacity, dashed) {
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.setAttribute('x1', ca.x); line.setAttribute('y1', ca.y);
+  line.setAttribute('x2', cb.x); line.setAttribute('y2', cb.y);
+  line.setAttribute('stroke', color);
+  line.setAttribute('stroke-width', sw);
+  line.setAttribute('opacity', opacity);
+  if (dashed) line.setAttribute('stroke-dasharray', '4 4');
+  svg.appendChild(line);
+}
+
+function renderTagFilter() {
+  // Official tags
+  const offTags = [...new Set(pieces.flatMap(p => p.tags))].sort();
+  // User tags (public + mine)
+  const uTags = [...new Set([
+    ...userTags.map(t => t.tag),
+    ...myTags.map(t => t.tag)
+  ])].sort();
+
+  const c = document.getElementById('tag-filter');
+  c.innerHTML = '';
+
+  offTags.forEach(t => {
+    const pill = document.createElement('div');
+    pill.className = 'tag-pill' + (activeTag === t && activeTagType === 'official' ? ' active' : '');
+    pill.textContent = t;
+    pill.onclick = () => {
+      if (activeTag === t && activeTagType === 'official') { activeTag = null; activeTagType = null; }
+      else { activeTag = t; activeTagType = 'official'; }
+      renderAll();
+    };
+    c.appendChild(pill);
+  });
+
+  if (layers.users && uTags.length) {
+    const sep = document.createElement('div');
+    sep.style.cssText = 'width:0.5px;height:16px;background:var(--border2);flex-shrink:0;align-self:center';
+    c.appendChild(sep);
+
+    uTags.forEach(t => {
+      const pill = document.createElement('div');
+      pill.className = 'tag-pill user-tag' + (activeTag === t && activeTagType === 'user' ? ' active' : '');
+      pill.textContent = t;
+      pill.onclick = () => {
+        if (activeTag === t && activeTagType === 'user') { activeTag = null; activeTagType = null; }
+        else { activeTag = t; activeTagType = 'user'; }
+        renderAll();
+      };
+      c.appendChild(pill);
+    });
+  }
+}
+
+// ── LAYER TOGGLES ──
+function toggleLayer(layer) {
+  layers[layer] = !layers[layer];
+  document.getElementById('toggle-' + layer).classList.toggle('on', layers[layer]);
+  // Reset active tag if its layer got hidden
+  if (!layers[layer] && activeTagType === layer) { activeTag = null; activeTagType = null; }
+  renderAll();
+}
+
+// ── SELECT / DETAIL ──
+function selectPiece(id) {
+  selectedId = selectedId === id ? null : id;
+  renderAll();
+  selectedId ? showDetail(selectedId) : closeDetail();
+}
+
+async function showDetail(id) {
+  const p = pieces.find(x => x.id === id);
+  if (!p) return;
+
+  document.getElementById('d-title').textContent = p.title;
+  document.getElementById('d-meta').textContent = '// ' + p.author + (p.year ? ' · ' + p.year : '');
+
+  // Vimeo
+  const vimeo = document.getElementById('d-vimeo');
+  const previewBg = p.vimeo_thumb
+    ? `<img src="${p.vimeo_thumb}" alt="${p.title}">`
+    : `<div style="position:absolute;inset:0;background:${p.c}18;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:32px;color:${p.c};opacity:0.5">${p.g}</div>`;
+  vimeo.innerHTML = `<div class="d-preview" onclick="loadVimeo(this,'${p.vimeo_url}')">${previewBg}<div class="d-play-btn">▶</div></div>`;
+
+  // Official tags
+  let tagsHTML = p.tags.map(t => `<span class="d-tag" onclick="filterTag('${t}','official')">${t}</span>`).join('');
+  // User tags on this piece
+  const pubTagsHere = userTags.filter(t => t.piece_id === id);
+  const myTagsHere  = myTags.filter(t => t.piece_id === id);
+  const allUserTagsHere = [...new Map([...pubTagsHere, ...myTagsHere].map(t => [t.tag, t])).values()];
+  if (layers.users) {
+    tagsHTML += allUserTagsHere.map(t => {
+      const isMine = myTagsHere.find(m => m.tag === t.tag);
+      return `<span class="d-tag user-tag${isMine ? ' mine' : ''}" onclick="filterTag('${t.tag}','user')">${t.tag}</span>`;
+    }).join('');
+  }
+  document.getElementById('d-tags').innerHTML = tagsHTML;
+
+  // Description
+  const descEl = document.getElementById('d-desc');
+  if (p.description) { descEl.textContent = p.description; descEl.style.display = 'block'; }
+  else descEl.style.display = 'none';
+
+  // Add tag section (logged in only)
+  const addSection = document.getElementById('add-tag-section');
+  addSection.style.display = session ? 'block' : 'none';
+  document.getElementById('new-tag-input').value = '';
+
+  // My tags on this piece
+  await renderMyTagsSection(id);
+
+  // Connections
+  const pubMap = buildUserTagMap(userTags);
+  const myMap  = buildUserTagMap(myTags);
+  const combinedMap = buildUserTagMap([...userTags, ...myTags]);
+
+  const conns = [];
+  pieces.filter(q => q.id !== id).forEach(q => {
+    const off = sharedOfficialTags(p, q);
+    const usr = sharedUserTags(p, q, combinedMap);
+    if (off.length || usr.length) {
+      conns.push({ piece: q, officialTags: off, userTags: usr });
+    }
+  });
+  conns.sort((a,b) => (b.officialTags.length + b.userTags.length) - (a.officialTags.length + a.userTags.length));
+
+  document.getElementById('d-connections').innerHTML = conns.length
+    ? conns.map(({ piece: q, officialTags: ot, userTags: ut }) => `
+        <div class="d-conn${ut.length && !ot.length ? ' user-conn' : ''}" onclick="selectPiece('${q.id}')">
+          <div class="cn">${q.title}</div>
+          <div class="ct">${[...ot, ...ut.map(t => '◌ '+t)].join(' · ')}</div>
+        </div>`).join('')
+    : `<div style="font-family:var(--mono);font-size:9px;color:var(--muted)">Sin conexiones aún</div>`;
+
+  document.getElementById('detail').classList.add('open');
+}
+
+async function renderMyTagsSection(pieceId) {
+  const section = document.getElementById('my-tags-section');
+  if (!session) { section.style.display = 'none'; return; }
+  const mine = myTags.filter(t => t.piece_id === pieceId);
+  if (!mine.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  document.getElementById('my-tags-list').innerHTML = mine.map(t => `
+    <div class="my-tag-item">
+      <span class="tag-name">${t.tag}</span>
+      <button class="pub-btn${t.public ? ' is-public' : ''}" onclick="togglePublish('${t.id}', ${t.public})">
+        ${t.public ? '◉ Público' : '○ Privado'}
+      </button>
+      <button class="del-btn" onclick="deleteUserTag('${t.id}', '${pieceId}')">✕</button>
+    </div>`).join('');
+}
+
+function loadVimeo(el, url) {
+  el.parentElement.innerHTML = `<iframe src="${url}?autoplay=1&title=0&byline=0&portrait=0" allow="autoplay; fullscreen" allowfullscreen></iframe>`;
+}
+
+function filterTag(t, type) { activeTag = t; activeTagType = type; renderAll(); }
+function closeDetail() {
+  selectedId = null;
+  document.getElementById('detail').classList.remove('open');
+  renderAll();
+}
+
+// ── USER TAG ACTIONS ──
+async function addUserTag() {
+  if (!session || !selectedId) return;
+  const input = document.getElementById('new-tag-input');
+  const tag = input.value.trim().toLowerCase();
+  if (!tag) return;
+
+  try {
+    const r = await fetch(`${API}/user-tags`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ piece_id: selectedId, tag })
+    });
+    const data = await r.json();
+    if (!r.ok) { showToast(data.error); return; }
+    myTags.unshift(data);
+    input.value = '';
+    await renderMyTagsSection(selectedId);
+    renderAll();
+    if (selectedId) showDetail(selectedId);
+  } catch(e) { showToast('Error al añadir tag'); }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement?.id === 'new-tag-input') addUserTag();
+});
+
+async function togglePublish(tagId, isPublic) {
+  if (!session) return;
+  const endpoint = isPublic ? 'unpublish' : 'publish';
+  try {
+    const r = await fetch(`${API}/user-tags/${tagId}/${endpoint}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${session.access_token}` }
+    });
+    const data = await r.json();
+    if (!r.ok) { showToast(data.error); return; }
+    const idx = myTags.findIndex(t => t.id === tagId);
+    if (idx !== -1) myTags[idx] = data;
+    // Reload public tags
+    await loadUserTags();
+    await renderMyTagsSection(selectedId);
+    renderAll();
+  } catch(e) { showToast('Error al cambiar visibilidad'); }
+}
+
+async function deleteUserTag(tagId, pieceId) {
+  if (!session) return;
+  try {
+    const r = await fetch(`${API}/user-tags/${tagId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${session.access_token}` }
+    });
+    if (!r.ok) { showToast('Error al eliminar'); return; }
+    myTags = myTags.filter(t => t.id !== tagId);
+    await loadUserTags();
+    await renderMyTagsSection(pieceId);
+    renderAll();
+    if (selectedId) showDetail(selectedId);
+  } catch(e) { showToast('Error al eliminar tag'); }
+}
+
+// ── AUTH ──
+function openAuthModal() {
+  if (session) { logout(); return; }
+  document.getElementById('auth-err').textContent = '';
+  document.getElementById('auth-modal').classList.add('open');
+}
+function closeAuthModal() { document.getElementById('auth-modal').classList.remove('open'); }
+document.getElementById('auth-modal').onclick = e => { if (e.target === document.getElementById('auth-modal')) closeAuthModal(); };
+
+function toggleAuthMode() {
+  authMode = authMode === 'login' ? 'register' : 'login';
+  document.getElementById('auth-modal-title').textContent = authMode === 'login' ? '// Entrar' : '// Registro';
+  document.getElementById('auth-submit-btn').textContent = authMode === 'login' ? 'Entrar' : 'Crear cuenta';
+  document.getElementById('auth-switch').textContent = authMode === 'login' ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Entra';
+  document.getElementById('auth-err').textContent = '';
+}
+
+async function submitAuth() {
+  const email    = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-pass').value;
+  const errEl    = document.getElementById('auth-err');
+  if (!email || !password) { errEl.textContent = 'Rellena todos los campos'; return; }
+
+  const endpoint = authMode === 'login' ? '/auth/login' : '/auth/register';
+  try {
+    const r = await fetch(API + endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await r.json();
+    if (!r.ok) { errEl.textContent = data.error; return; }
+
+    if (authMode === 'register' && !data.session) {
+      errEl.style.color = 'var(--accent)';
+      errEl.textContent = 'Revisa tu email para confirmar la cuenta';
+      return;
+    }
+
+    session = { access_token: data.access_token, user: data.user };
+    localStorage.setItem('vnet_session', JSON.stringify(session));
+    closeAuthModal();
+    updateAuthBtn();
+    await loadMyTags();
+    renderAll();
+  } catch(e) { errEl.textContent = 'Error de conexión'; }
+}
+
+function logout() {
+  session = null;
+  myTags  = [];
+  localStorage.removeItem('vnet_session');
+  updateAuthBtn();
+  closeDetail();
+  renderAll();
+}
+
+function updateAuthBtn() {
+  const btn = document.getElementById('auth-btn');
+  if (session) {
+    btn.textContent = session.user.email.split('@')[0] + ' ✕';
+    btn.classList.add('logged');
+    btn.title = 'Cerrar sesión';
+  } else {
+    btn.textContent = 'Entrar';
+    btn.classList.remove('logged');
+    btn.title = '';
+  }
+}
+
+// ── DRAG NODES ──
+function startDragNode(e, id) {
+  e.stopPropagation();
+  isDraggingNode = true; wasDragging = false;
+  const p = pieces.find(x => x.id === id);
+  const offX = e.clientX - (p.x * transform.scale + transform.x);
+  const offY = e.clientY - (p.y * transform.scale + transform.y);
+  const move = mv => {
+    wasDragging = true;
+    p.x = (mv.clientX - offX - transform.x) / transform.scale;
+    p.y = (mv.clientY - offY - transform.y) / transform.scale;
+    positionNodes(); renderEdges();
+  };
+  const up = () => { isDraggingNode = false; document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+  document.addEventListener('mousemove', move);
+  document.addEventListener('mouseup', up);
+}
+
+// ── PAN & ZOOM ──
+const canvas = document.getElementById('canvas');
+let isPanning = false, panX0, panY0, tx0, ty0;
+
+canvas.addEventListener('mousedown', e => {
+  if (isDraggingNode) return;
+  isPanning = true; panX0 = e.clientX; panY0 = e.clientY; tx0 = transform.x; ty0 = transform.y;
+  canvas.classList.add('grabbing');
+});
+window.addEventListener('mousemove', e => {
+  if (!isPanning) return;
+  transform.x = tx0 + (e.clientX - panX0);
+  transform.y = ty0 + (e.clientY - panY0);
+  positionNodes(); renderEdges();
+});
+window.addEventListener('mouseup', () => { isPanning = false; canvas.classList.remove('grabbing'); });
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const f = e.deltaY < 0 ? 1.1 : 0.91;
+  const r = canvas.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  transform.x = mx - (mx - transform.x) * f; transform.y = my - (my - transform.y) * f;
+  transform.scale = Math.min(Math.max(transform.scale * f, 0.2), 4);
+  positionNodes(); renderEdges();
+}, { passive: false });
+
+let touch0 = null;
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) touch0 = { x: e.touches[0].clientX, y: e.touches[0].clientY, tx: transform.x, ty: transform.y };
+});
+canvas.addEventListener('touchmove', e => {
+  if (touch0 && e.touches.length === 1) {
+    transform.x = touch0.tx + (e.touches[0].clientX - touch0.x);
+    transform.y = touch0.ty + (e.touches[0].clientY - touch0.y);
+    positionNodes(); renderEdges();
+  }
+});
+canvas.addEventListener('touchend', () => { touch0 = null; });
+
+function zoom(f) {
+  const cx = canvas.clientWidth/2, cy = canvas.clientHeight/2;
+  transform.x = cx-(cx-transform.x)*f; transform.y = cy-(cy-transform.y)*f;
+  transform.scale = Math.min(Math.max(transform.scale*f,0.2),4);
+  positionNodes(); renderEdges();
+}
+function resetView() { transform={x:60,y:40,scale:1}; positionNodes(); renderEdges(); }
+
+function updateStatus() {
+  const offTags = new Set(pieces.flatMap(p => p.tags));
+  const uTagSet = new Set(userTags.map(t => t.tag));
+  document.getElementById('st-pieces').textContent = pieces.length;
+  document.getElementById('st-otags').textContent  = offTags.size;
+  document.getElementById('st-utags').textContent  = uTagSet.size;
+}
+
+function showToast(msg) {
+  const el = document.getElementById('error-toast');
+  el.textContent = msg; el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 4000);
+}
+
+// ── START ──
+boot();
+</script>
+</body>
+</html>
