@@ -234,10 +234,7 @@ app.get('/user-tags/mine', requireAuth, async (req, res) => {
 app.get('/user-tags/public', async (req, res) => {
   const { data, error } = await supabaseAdmin
     .from('user_tags')
-    .select(`
-      id, piece_id, tag, created_at,
-      profiles ( display_name )
-    `)
+    .select('id, piece_id, tag, created_at, user_id')
     .eq('public', true)
     .order('created_at', { ascending: false });
 
