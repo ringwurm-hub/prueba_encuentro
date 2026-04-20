@@ -79,22 +79,23 @@ app.post('/auth/register', async (req, res) => {
 
 // POST /auth/login
 // Body: { email, password }
+// POST /auth/login
+// Body: { email, password }
 app.post('/auth/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password)
     return res.status(400).json({ error: 'email y password son obligatorios' });
-
   const { data, error } = await supabaseAnon.auth.signInWithPassword({ email, password });
   if (error) return res.status(401).json({ error: error.message });
-
-res.json({
-  user:          { id: data.user.id, email: data.user.email },
-  access_token:  data.session.access_token,
-  refresh_token: data.session.refresh_token,
-  expires_at:    data.session.expires_at
+  res.json({
+    user:          { id: data.user.id, email: data.user.email },
+    access_token:  data.session.access_token,
+    refresh_token: data.session.refresh_token,
+    expires_at:    data.session.expires_at
+  });
 });
 
- app.post('/auth/refresh', async (req, res) => {
+app.post('/auth/refresh', async (req, res) => {
   const { refresh_token } = req.body;
   if (!refresh_token) return res.status(400).json({ error: 'refresh_token requerido' });
   const { data, error } = await supabaseAnon.auth.refreshSession({ refresh_token });
@@ -103,7 +104,7 @@ res.json({
     access_token:  data.session.access_token,
     refresh_token: data.session.refresh_token,
   });
-}); 
+});
   
 // GET /auth/me — devuelve el perfil del usuario autenticado
 app.get('/auth/me', requireAuth, async (req, res) => {
